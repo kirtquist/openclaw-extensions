@@ -1,0 +1,34 @@
+{
+  "id": "bible-plugin",
+  "name": "Bible Plugin",
+  "description": "OpenClaw-native /bible slash command for devotional and study summaries.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "model": {
+        "type": "string",
+        "default": "google/gemini-2.5-flash",
+        "description": "Default OpenRouter model ID."
+      },
+      "signalMaxChars": {
+        "type": "integer",
+        "minimum": 200,
+        "maximum": 4000,
+        "default": 1400,
+        "description": "Maximum character count for short mode replies."
+      },
+      "defaultMode": {
+        "type": "string",
+        "enum": ["short", "study"],
+        "default": "short",
+        "description": "Default response mode when no flag is provided."
+      },
+      "openrouterProfile": {
+        "type": "string",
+        "default": "openrouter:default",
+        "description": "Auth profile name in auth-profiles.json."
+      }
+    }
+  }
+}
