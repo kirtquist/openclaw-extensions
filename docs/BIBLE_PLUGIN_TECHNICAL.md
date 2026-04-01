@@ -73,6 +73,12 @@ This allows either of these to work safely:
 - `historical context`
 - `historical_context`
 
+Study mode key point handling is tolerant to minor schema drift:
+- canonical shape remains `key_points` as an array
+- `keypoints` is accepted as an alias after key normalization
+- string-based bullet/numbered content is split into up to 3 points for rendering
+- if no usable points are present, `Key points:` is omitted
+
 The plugin also strips fenced JSON if the model returns a code block.
 
 ## Error behavior

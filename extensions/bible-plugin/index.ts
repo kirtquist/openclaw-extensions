@@ -106,6 +106,47 @@ function cleanText(value: unknown) {
   return String(value).replace(/\s+/g, ' ').trim();
 }
 
+function normalizeStudyKeyPoints(generated: Record<string, unknown>) {
+  const candidate = generated.key_points ?? generated.keypoints;
+
+  if (Array.isArray(candidate)) {
+    return candidate.map((item) => cleanText(item)).filter(Boolean).slice(0, 3);
+  }
+
+  if (typeof candidate !== 'string') {
+    return [];
+  }
+
+  const text = candidate.trim();
+  if (!text) {
+    return [];
+  }
+
+  const stripMarker = (line: string) =>
+    line
+      .replace(/^[-*•]\s+/, '')
+      .replace(/^\d+[\).]\s+/, '')
+      .trim();
+
+  let points = text
+    .split(/\n+/)
+    .map((line) => stripMarker(line))
+    .filter(Boolean);
+
+  // Fallback for single-line bullet/numbered output.
+  if (points.length <= 1) {
+    const inlinePoints = text
+      .split(/(?:^|\s+)(?:[-*•]|\d+[\).])\s+/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (inlinePoints.length > 1) {
+      points = inlinePoints;
+    }
+  }
+
+  return points.slice(0, 3);
+}
+
 function firstSentences(value: unknown, count: number) {
   const cleaned = cleanText(value);
   if (!cleaned) return '';
@@ -142,9 +183,7 @@ function renderShortReply(generated: Record<string, unknown>, reference: string,
 }
 
 function renderStudyReply(generated: Record<string, unknown>, reference: string) {
-  const keyPoints = Array.isArray(generated.key_points)
-    ? generated.key_points.map((item) => `- ${cleanText(item)}`).filter(Boolean)
-    : [];
+  const keyPoints = normalizeStudyKeyPoints(generated).map((item) => `- ${item}`);
 
   const sections = [
     cleanText(generated.title) || reference,
@@ -181,7 +220,7 @@ async function generateSummary(config: ReturnType<typeof getPluginConfig>, mode:
     messages: [
       {
         role: 'system',
-        content: 'You are a careful Christian study assistant that returns valid JSON only.'
+        content: 'You are a careful Christ-centered Christian study assistant that returns valid JSON only. You are a Bible first ministry. You are a Bible first disciple. You are a Bible first follower of Jesus Christ. You are a Bible first believer in Jesus Christ. You are a Bible first Christian.'
       },
       {
         role: 'user',
