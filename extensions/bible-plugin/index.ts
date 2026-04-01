@@ -8,7 +8,7 @@ const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULTS = {
   model: 'google/gemini-2.5-flash',
   signalMaxChars: 1400,
-  defaultMode: 'short',
+  defaultMode: 'study',
   openrouterProfile: 'openrouter:default'
 } as const;
 
@@ -25,6 +25,12 @@ function getPluginConfig(fullConfig: any) {
         : DEFAULTS.openrouterProfile
   };
 }
+function normalizeModeToken(token: string) {
+  return token
+    .normalize('NFKC')
+    .replace(/[‐‑‒–—―]/g, '-') // normalize unicode dashes to ASCII '-'
+    .toLowerCase();
+}
 
 function parseCommandArgs(args: string | undefined, defaultMode: 'short' | 'study') {
   const trimmed = (args ?? '').trim();
@@ -36,12 +42,41 @@ function parseCommandArgs(args: string | undefined, defaultMode: 'short' | 'stud
   let mode = defaultMode;
   const remainder: string[] = [];
 
-  for (const token of tokens) {
-    if (token === '--study') {
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    const normalized = normalizeModeToken(token);
+
+    if (normalized === '--mode' && i + 1 < tokens.length) {
+      const next = normalizeModeToken(tokens[i + 1]);
+      if (next === 'study') {
+        mode = 'study';
+        i++;
+        continue;
+      }
+      if (next === 'short') {
+        mode = 'short';
+        i++;
+        continue;
+      }
+    }
+
+    if (normalized.startsWith('--mode=')) {
+      const value = normalized.slice('--mode='.length);
+      if (value === 'study') {
+        mode = 'study';
+        continue;
+      }
+      if (value === 'short') {
+        mode = 'short';
+        continue;
+      }
+    }
+
+    if (normalized === '--study' || normalized === '-s' || normalized === 'study') {
       mode = 'study';
       continue;
     }
-    if (token === '--short') {
+    if (normalized === '--short' || normalized === '-d' || normalized === 'short') {
       mode = 'short';
       continue;
     }
@@ -55,7 +90,8 @@ function usageText() {
   return [
     'Usage:',
     '/bible matthew 25',
-    '/bible --study matthew 25'
+    '/bible --study matthew 25',
+    '/bible study matthew 25',
   ].join('\n');
 }
 

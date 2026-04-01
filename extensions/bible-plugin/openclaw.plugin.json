@@ -21,8 +21,8 @@
       "defaultMode": {
         "type": "string",
         "enum": ["short", "study"],
-        "default": "short",
-        "description": "Default response mode when no flag is provided."
+        "default": "study",
+        "description": "Fallback response mode when no valid mode token is provided in command args."
       },
       "openrouterProfile": {
         "type": "string",
