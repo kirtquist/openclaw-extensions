@@ -58,6 +58,14 @@ function parseCommandArgs(args: string | undefined, defaultMode: 'short' | 'stud
         i++;
         continue;
       }
+      // Ignore invalid --mode values rather than polluting the reference.
+      i++;
+      continue;
+    }
+
+    if (normalized === '--mode') {
+      // Ignore dangling --mode with no value.
+      continue;
     }
 
     if (normalized.startsWith('--mode=')) {
@@ -70,6 +78,8 @@ function parseCommandArgs(args: string | undefined, defaultMode: 'short' | 'stud
         mode = 'short';
         continue;
       }
+      // Ignore invalid --mode=VALUE rather than polluting the reference.
+      continue;
     }
 
     if (normalized === '--study' || normalized === '-s' || normalized === 'study') {
