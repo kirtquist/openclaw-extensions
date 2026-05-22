@@ -1,7 +1,16 @@
 {
   "id": "bible-plugin",
+  "activation": {
+    "onStartup": true
+  },
   "name": "Bible Plugin",
   "description": "OpenClaw-native /bible slash command for devotional and study summaries.",
+  "commandAliases": [
+    {
+      "name": "bible",
+      "kind": "runtime-slash"
+    }
+  ],
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -20,7 +29,7 @@
       },
       "defaultMode": {
         "type": "string",
-        "enum": ["short", "study"],
+        "enum": ["short", "study", "enhanced-study"],
         "default": "study",
         "description": "Fallback response mode when no valid mode token is provided in command args."
       },

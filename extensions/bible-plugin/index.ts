@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
+import { definePluginEntry } from 'openclaw/plugin-sdk/core';
 
 const PLUGIN_ID = 'bible-plugin';
 const PLUGIN_NAME = 'Bible Plugin';
@@ -12,13 +13,21 @@ const DEFAULTS = {
   openrouterProfile: 'openrouter:default'
 } as const;
 
+type BibleMode = 'short' | 'study' | 'enhanced-study';
+
 function getPluginConfig(fullConfig: any) {
   const entry = fullConfig?.plugins?.entries?.[PLUGIN_ID];
   const raw = entry?.config ?? entry ?? {};
   return {
     model: typeof raw.model === 'string' && raw.model.trim() ? raw.model.trim() : DEFAULTS.model,
     signalMaxChars: Number.isInteger(raw.signalMaxChars) ? raw.signalMaxChars : DEFAULTS.signalMaxChars,
-    defaultMode: raw.defaultMode === 'study' ? 'study' : DEFAULTS.defaultMode,
+    defaultMode: 
+       raw.defaultMode === 'short' ||
+       raw.defaultMode === 'study' ||
+       raw.defaultMode === 'enhanced-study'
+         ? raw.defaultMode
+         : DEFAULTS.defaultMode,
+       
     openrouterProfile:
       typeof raw.openrouterProfile === 'string' && raw.openrouterProfile.trim()
         ? raw.openrouterProfile.trim()
@@ -32,7 +41,7 @@ function normalizeModeToken(token: string) {
     .toLowerCase();
 }
 
-function parseCommandArgs(args: string | undefined, defaultMode: 'short' | 'study') {
+function parseCommandArgs(args: string | undefined, defaultMode: 'short' | 'study' | 'enhanced-study') {
   const trimmed = (args ?? '').trim();
   if (!trimmed) {
     return { mode: defaultMode, reference: '' };
@@ -58,6 +67,11 @@ function parseCommandArgs(args: string | undefined, defaultMode: 'short' | 'stud
         i++;
         continue;
       }
+      if (next === 'enhanced-study'|| next === 'es' || next === 'enhanced') {
+        mode = 'enhanced-study';
+        i++;
+        continue;
+      }
       // Ignore invalid --mode values rather than polluting the reference.
       i++;
       continue;
@@ -78,6 +92,10 @@ function parseCommandArgs(args: string | undefined, defaultMode: 'short' | 'stud
         mode = 'short';
         continue;
       }
+      if (value === 'enhanced-study' || value === 'enhanced' || value === 'es') {
+        mode = 'enhanced-study';
+        continue;
+      }      
       // Ignore invalid --mode=VALUE rather than polluting the reference.
       continue;
     }
@@ -88,6 +106,17 @@ function parseCommandArgs(args: string | undefined, defaultMode: 'short' | 'stud
     }
     if (normalized === '--short' || normalized === '-d' || normalized === 'short') {
       mode = 'short';
+      continue;
+    }
+    if (
+      normalized === '--enhanced' ||
+      normalized === '--enhanced-study' ||
+      normalized === '--es' ||
+      normalized === 'es' ||
+      normalized === 'enhanced' ||
+      normalized === 'enhanced-study'
+    ) {
+      mode = 'enhanced-study';
       continue;
     }
     remainder.push(token);
@@ -101,12 +130,15 @@ function usageText() {
     'Usage:',
     '/bible matthew 25',
     '/bible --study matthew 25',
+    '/bible --enhanced-study matthew 25',
     '/bible study matthew 25',
+    '/bible --es matthew 25',
+    '/bible --mode=enhanced-study matthew 25',    
   ].join('\n');
 }
 
-async function loadPromptTemplate(mode: 'short' | 'study') {
-  const filename = mode === 'study' ? './prompts/study.md' : './prompts/short.md';
+async function loadPromptTemplate(mode: 'short' | 'study' | 'enhanced-study') {
+  const filename = mode === 'study' ? './prompts/study.md' : mode === 'enhanced-study' ? './prompts/enhanced-study.md' : './prompts/short.md';
   const url = new URL(filename, import.meta.url);
   return (await readFile(url, 'utf8')).trim() + '\n';
 }
@@ -235,9 +267,50 @@ function renderStudyReply(generated: Record<string, unknown>, reference: string)
     cleanText(generated.title) || reference,
     `Reference: ${cleanText(generated.reference) || reference}`,
     cleanText(generated.big_idea) ? `Big idea: ${cleanText(generated.big_idea)}` : '',
+    cleanText(generated.book_context ?? generated.bookcontext)
+      ? `Book context: ${cleanText(generated.book_context ?? generated.bookcontext)}`
+      : '',
     cleanText(generated.historical_context ?? generated.historicalcontext)
       ? `Historical context: ${cleanText(generated.historical_context ?? generated.historicalcontext)}`
       : '',
+    keyPoints.length ? `Key points:\n${keyPoints.join('\n')}` : '',
+    cleanText(generated.application) ? `Application: ${cleanText(generated.application)}` : '',
+    cleanText(generated.prayer) ? `Prayer: ${cleanText(generated.prayer)}` : ''
+  ].filter(Boolean);
+
+  return sections.join('\n\n');
+}
+
+function normalizeStringArray(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.map((item) => cleanText(item)).filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(/\n+/)
+      .map((item) => item.replace(/^[-*•]\s+/, '').trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function renderEnhancedStudyReply(generated: Record<string, unknown>, reference: string) {
+  const explicitTeaching = normalizeStringArray(generated.explicit_teaching).map((item) => `- ${item}`);
+  const supportedInferences = normalizeStringArray(generated.supported_inferences).map((item) => `- ${item}`);
+  const keyPoints = normalizeStringArray(generated.key_points ?? generated.keypoints).map((item) => `- ${item}`);
+
+  const sections = [
+    cleanText(generated.title) || reference,
+    `Reference: ${cleanText(generated.reference) || reference}`,
+    cleanText(generated.big_idea) ? `Big idea: ${cleanText(generated.big_idea)}` : '',
+    cleanText(generated.book_context ?? generated.bookcontext)
+      ? `Book context: ${cleanText(generated.book_context ?? generated.bookcontext)}`
+      : '',
+    cleanText(generated.historical_context ?? generated.historicalcontext)
+      ? `Historical context: ${cleanText(generated.historical_context ?? generated.historicalcontext)}`
+      : '',
+    explicitTeaching.length ? `Explicit teaching:\n${explicitTeaching.join('\n')}` : '',
+    supportedInferences.length ? `Supported inferences:\n${supportedInferences.join('\n')}` : '',
     keyPoints.length ? `Key points:\n${keyPoints.join('\n')}` : '',
     cleanText(generated.application) ? `Application: ${cleanText(generated.application)}` : '',
     cleanText(generated.prayer) ? `Prayer: ${cleanText(generated.prayer)}` : ''
@@ -255,16 +328,23 @@ async function loadOpenRouterKey(profileName: string) {
   return key;
 }
 
-async function generateSummary(config: ReturnType<typeof getPluginConfig>, mode: 'short' | 'study', reference: string) {
+async function generateSummary(config: ReturnType<typeof getPluginConfig>, mode: BibleMode, reference: string) {
   const promptTemplate = await loadPromptTemplate(mode);
   const prompt = fillPrompt(promptTemplate, reference);
   const apiKey = await loadOpenRouterKey(config.openrouterProfile);
   const payload = {
     model: config.model,
-    temperature: mode === 'study' ? 0.5 : 0.4,
-    max_tokens: mode === 'study' ? 1500 : 700,
+    temperature:
+    mode === 'enhanced-study' ? 0.45 :
+    mode === 'study' ? 0.5 :
+    0.4,
+  
+    max_tokens:
+      mode === 'enhanced-study' ? 3200 :
+      mode === 'study' ? 1500 :
+      700,
     messages: [
-      {
+        {
         role: 'system',
         content: 'You are a careful Christ-centered Christian study assistant that returns valid JSON only. You are a Bible first ministry. You are a Bible first disciple. You are a Bible first follower of Jesus Christ. You are a Bible first believer in Jesus Christ. You are a Bible first Christian.'
       },
@@ -283,7 +363,8 @@ async function generateSummary(config: ReturnType<typeof getPluginConfig>, mode:
       'HTTP-Referer': 'https://openclaw.local',
       'X-Title': 'OpenClaw Bible Plugin'
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(45000)
   });
 
   if (!response.ok) {
@@ -302,28 +383,34 @@ async function generateSummary(config: ReturnType<typeof getPluginConfig>, mode:
   return normalizeFields(extractJsonContent(content));
 }
 
-const plugin = {
+
+const plugin = definePluginEntry({
   id: PLUGIN_ID,
   name: PLUGIN_NAME,
   description: 'OpenClaw-native /bible slash command for devotional and study summaries.',
   register(api: any) {
     api.registerCommand({
       name: 'bible',
-      description: 'Summarize a Bible chapter in short devotional or study mode.',
+      description: 'Summarize a Bible chapter in short, study, or enhanced-study mode.',
       acceptsArgs: true,
       handler: async (ctx: any) => {
         const pluginConfig = getPluginConfig(ctx.config);
-        const { mode, reference } = parseCommandArgs(ctx.args, pluginConfig.defaultMode as 'short' | 'study');
+        const { mode, reference } = parseCommandArgs(ctx.args, pluginConfig.defaultMode as BibleMode);
 
         if (!reference) {
           return { text: usageText() };
         }
 
         try {
-          const generated = await generateSummary(pluginConfig, mode as 'short' | 'study', reference);
-          const text = mode === 'study'
-            ? renderStudyReply(generated, reference)
-            : renderShortReply(generated, reference, pluginConfig.signalMaxChars);
+          const generated = await generateSummary(pluginConfig, mode as BibleMode, reference);
+
+          const text =
+            mode === 'enhanced-study'
+              ? renderEnhancedStudyReply(generated, reference)
+              : mode === 'study'
+                ? renderStudyReply(generated, reference)
+                : renderShortReply(generated, reference, pluginConfig.signalMaxChars);
+
           return { text };
         } catch (error: any) {
           return {
@@ -336,6 +423,6 @@ const plugin = {
       }
     });
   }
-};
+});
 
 export default plugin;

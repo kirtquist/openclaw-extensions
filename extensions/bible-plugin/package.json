@@ -4,15 +4,22 @@
   "private": true,
   "description": "OpenClaw Bible slash-command plugin",
   "type": "module",
-  "main": "index.ts",
+  "main": "dist/index.js",
   "files": [
-    "index.ts",
-    "openclaw.plugin.json",
-    "prompts/"
+    "dist",
+    "openclaw.plugin.json"
   ],
+  "scripts": {
+    "build": "tsc && mkdir -p dist/prompts && cp prompts/*.md dist/prompts/"
+  },
   "openclaw": {
     "extensions": [
-      "./index.ts"
+      "./dist/index.js"
     ]
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "openclaw": "^2026.5.18",
+    "typescript": "^5.6.0"
   }
 }

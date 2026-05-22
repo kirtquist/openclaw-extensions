@@ -29,6 +29,15 @@ openclaw plugins enable bible-plugin
 systemctl --user restart openclaw-gateway
 ```
 
+To **update** an already-installed copy from this repo, reinstall over it with `--force` (you do not need to uninstall first):
+
+```bash
+openclaw plugins install ~/projects/openclaw/extensions/extensions/bible-plugin --force
+systemctl --user restart openclaw-gateway
+```
+
+Use `openclaw plugins uninstall bible-plugin` only when you want to remove the plugin entirely, not as a required step before upgrading.
+
 Inspect plugin status:
 
 ```bash

@@ -18,3 +18,6 @@ Rules:
 - historical_context must be 1 sentence.
 - application must be 1 to 2 sentences.
 - prayer must be 1 short sentence.
+- Never add qualifications or theological inferences unless the passage itself states them or you explicitly support them with Scripture.
+- If a brief application depends on inference, include the supporting Scripture reference(s).
+- Do not invent cross-references or citations.

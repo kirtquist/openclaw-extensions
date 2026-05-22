@@ -10,8 +10,7 @@ Native OpenClaw `/bible` slash command plugin.
 ## What it does
 
 - short devotional chapter summaries
-- study mode with more structure
-- historical context, application, and prayer
+- study mode with more structure (big idea, **book context**—how the chapter fits the book’s story and major themes—historical context, key points, application, prayer)
 - direct OpenRouter usage
 
 ## Configuration
