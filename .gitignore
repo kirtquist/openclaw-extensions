@@ -1,3 +1,4 @@
 node_modules/
 .DS_Store
 extensions/bible-plugin/dist/
+extensions/bible-plugin/openconfig.json
