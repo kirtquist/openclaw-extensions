@@ -20,7 +20,7 @@ Native OpenClaw `/bible` slash command plugin.
 - `model` (passed directly to the endpoint; OpenClaw aliases are not resolved)
 - `signalMaxChars`
 - `defaultMode`
-- `openrouterProfile` (used only with OpenRouter)
+- `openrouterApiKey` (used only with OpenRouter)
 
 OpenRouter remains the default:
 
@@ -29,7 +29,7 @@ OpenRouter remains the default:
   "provider": "openrouter",
   "baseUrl": "https://openrouter.ai/api/v1/chat/completions",
   "model": "google/gemini-2.5-flash",
-  "openrouterProfile": "openrouter:default"
+  "openrouterApiKey": "your-key"
 }
 ```
 
@@ -44,8 +44,18 @@ actual Ollama model name:
 }
 ```
 
-Ollama requests do not load an OpenRouter auth profile or send an
-`Authorization` header.
+Ollama requests do not load an OpenRouter API key or send an `Authorization`
+header.
+
+## Auth
+
+The plugin needs an OpenRouter API key. Configure it in either place:
+
+- plugin config field `openrouterApiKey`
+- environment variable `OPENROUTER_API_KEY`
+
+The plugin checks `openrouterApiKey` first, then `OPENROUTER_API_KEY`.
+It does not read OpenClaw internal auth storage.
 
 ## Notes
 

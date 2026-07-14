@@ -1,17 +1,16 @@
 import { readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { definePluginEntry } from 'openclaw/plugin-sdk/core';
 
 const PLUGIN_ID = 'bible-plugin';
 const PLUGIN_NAME = 'Bible Plugin';
-const AUTH_FILE = `${homedir()}/.openclaw/agents/main/agent/auth-profiles.json`;
+const MISSING_OPENROUTER_API_KEY_MESSAGE =
+  'Bible plugin needs an OpenRouter API key configured via plugin config field openrouterApiKey or OPENROUTER_API_KEY.';
 const DEFAULTS = {
   provider: 'openrouter',
   baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
   model: 'google/gemini-2.5-flash',
   signalMaxChars: 1400,
-  defaultMode: 'study',
-  openrouterProfile: 'openrouter:default'
+  defaultMode: 'study'
 } as const;
 
 type BibleMode = 'short' | 'study' | 'enhanced-study';
@@ -33,11 +32,10 @@ function getPluginConfig(fullConfig: any) {
        raw.defaultMode === 'enhanced-study'
          ? raw.defaultMode
          : DEFAULTS.defaultMode,
-       
-    openrouterProfile:
-      typeof raw.openrouterProfile === 'string' && raw.openrouterProfile.trim()
-        ? raw.openrouterProfile.trim()
-        : DEFAULTS.openrouterProfile
+    openrouterApiKey:
+      typeof raw.openrouterApiKey === 'string' && raw.openrouterApiKey.trim()
+        ? raw.openrouterApiKey.trim()
+        : undefined
   };
 }
 function normalizeModeToken(token: string) {
@@ -325,20 +323,24 @@ function renderEnhancedStudyReply(generated: Record<string, unknown>, reference:
   return sections.join('\n\n');
 }
 
-async function loadOpenRouterKey(profileName: string) {
-  const auth = JSON.parse(await readFile(AUTH_FILE, 'utf8'));
-  const key = auth?.profiles?.[profileName]?.key;
-  if (!key || typeof key !== 'string') {
-    throw new Error(`OpenRouter profile not found: ${profileName}`);
+function resolveOpenRouterApiKey(config: ReturnType<typeof getPluginConfig>) {
+  if (config.openrouterApiKey) {
+    return config.openrouterApiKey;
   }
-  return key;
+
+  const envKey = process.env.OPENROUTER_API_KEY?.trim();
+  if (envKey) {
+    return envKey;
+  }
+
+  throw new Error(MISSING_OPENROUTER_API_KEY_MESSAGE);
 }
 
 async function generateSummary(config: ReturnType<typeof getPluginConfig>, mode: BibleMode, reference: string) {
   const promptTemplate = await loadPromptTemplate(mode);
   const prompt = fillPrompt(promptTemplate, reference);
   const apiKey = config.provider === 'openrouter'
-    ? await loadOpenRouterKey(config.openrouterProfile)
+    ? resolveOpenRouterApiKey(config)
     : undefined;
   const payload = {
     model: config.model,
@@ -426,10 +428,11 @@ const plugin = definePluginEntry({
 
           return { text };
         } catch (error: any) {
+          console.error('[bible-plugin] request failed:', error?.message ?? error);
           return {
             text:
-              error?.message && String(error.message).includes('OpenRouter profile not found')
-                ? 'Bible plugin is missing a usable OpenRouter profile. Check plugin config and auth profiles.'
+              error?.message === MISSING_OPENROUTER_API_KEY_MESSAGE
+                ? MISSING_OPENROUTER_API_KEY_MESSAGE
                 : 'Bible plugin could not complete that request right now. Please try again in a moment.'
           };
         }

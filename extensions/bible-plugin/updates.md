@@ -26,5 +26,5 @@ This file tracks local changes made to the Bible plugin after the original repo 
 - Updated plugin metadata to reflect enhanced-study config options and current packaged runtime output.
 
 ### Security note
-- OpenClaw security audit flags this plugin for a potential exfiltration pattern because it reads the auth profile file and makes outbound OpenRouter requests.
-- This appears to be expected behavior for the current implementation, but it should be reviewed carefully before wider distribution.
+- The plugin no longer reads OpenClaw internal auth storage.
+- OpenRouter auth is explicit: set `plugins.entries.bible-plugin.config.openrouterApiKey` or `OPENROUTER_API_KEY`.

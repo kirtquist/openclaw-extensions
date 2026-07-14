@@ -14,6 +14,13 @@ npm install
 npm run build
 ```
 
+Configure OpenRouter auth with either:
+
+- `plugins.entries.bible-plugin.config.openrouterApiKey`
+- `OPENROUTER_API_KEY` in the gateway environment
+
+The plugin prefers the config field and falls back to the environment variable.
+
 Install the plugin from the project source:
 
 ```bash

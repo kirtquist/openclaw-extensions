@@ -19,7 +19,7 @@
         "type": "string",
         "enum": ["openrouter", "ollama"],
         "default": "openrouter",
-        "description": "Model provider. OpenRouter uses the configured auth profile; Ollama does not send authorization."
+        "description": "Model provider. OpenRouter uses the configured API key; Ollama does not send authorization."
       },
       "baseUrl": {
         "type": "string",
@@ -44,10 +44,9 @@
         "default": "study",
         "description": "Fallback response mode when no valid mode token is provided in command args."
       },
-      "openrouterProfile": {
+      "openrouterApiKey": {
         "type": "string",
-        "default": "openrouter:default",
-        "description": "Auth profile name in auth-profiles.json; ignored for Ollama."
+        "description": "Direct OpenRouter API key; falls back to OPENROUTER_API_KEY and is ignored for Ollama."
       }
     }
   }
