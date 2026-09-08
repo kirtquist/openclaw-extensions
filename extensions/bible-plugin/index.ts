@@ -15,7 +15,7 @@ const DEFAULTS = {
   defaultMode: 'study'
 } as const;
 
-type BibleMode = 'short' | 'study' | 'enhanced-study';
+type BibleMode = 'short' | 'study' | 'leader' | 'enhanced-study';
 type ReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'max';
 
 function isReasoningEffort(value: unknown): value is ReasoningEffort {
@@ -43,6 +43,7 @@ function getPluginConfig(fullConfig: any) {
     defaultMode: 
        raw.defaultMode === 'short' ||
        raw.defaultMode === 'study' ||
+       raw.defaultMode === 'leader' ||
        raw.defaultMode === 'enhanced-study'
          ? raw.defaultMode
          : DEFAULTS.defaultMode,
@@ -59,7 +60,7 @@ function normalizeModeToken(token: string) {
     .toLowerCase();
 }
 
-function parseCommandArgs(args: string | undefined, defaultMode: 'short' | 'study' | 'enhanced-study') {
+function parseCommandArgs(args: string | undefined, defaultMode: BibleMode) {
   const trimmed = (args ?? '').trim();
   if (!trimmed) {
     return { mode: defaultMode, reference: '' };
@@ -82,6 +83,11 @@ function parseCommandArgs(args: string | undefined, defaultMode: 'short' | 'stud
       }
       if (next === 'short') {
         mode = 'short';
+        i++;
+        continue;
+      }
+      if (next === 'leader') {
+        mode = 'leader';
         i++;
         continue;
       }
@@ -110,6 +116,10 @@ function parseCommandArgs(args: string | undefined, defaultMode: 'short' | 'stud
         mode = 'short';
         continue;
       }
+      if (value === 'leader') {
+        mode = 'leader';
+        continue;
+      }
       if (value === 'enhanced-study' || value === 'enhanced' || value === 'es') {
         mode = 'enhanced-study';
         continue;
@@ -124,6 +134,10 @@ function parseCommandArgs(args: string | undefined, defaultMode: 'short' | 'stud
     }
     if (normalized === '--short' || normalized === '-d' || normalized === 'short') {
       mode = 'short';
+      continue;
+    }
+    if (normalized === '--leader' || normalized === '-l' || normalized === 'leader') {
+      mode = 'leader';
       continue;
     }
     if (
@@ -148,6 +162,7 @@ function usageText() {
     'Usage:',
     '/bible matthew 25',
     '/bible --study matthew 25',
+    '/bible --leader matthew 25',
     '/bible --enhanced-study matthew 25',
     '/bible study matthew 25',
     '/bible --es matthew 25',
@@ -155,8 +170,12 @@ function usageText() {
   ].join('\n');
 }
 
-async function loadPromptTemplate(mode: 'short' | 'study' | 'enhanced-study') {
-  const filename = mode === 'study' ? './prompts/study.md' : mode === 'enhanced-study' ? './prompts/enhanced-study.md' : './prompts/short.md';
+async function loadPromptTemplate(mode: BibleMode) {
+  const filename =
+    mode === 'study' ? './prompts/study.md' :
+    mode === 'leader' ? './prompts/leader.md' :
+    mode === 'enhanced-study' ? './prompts/enhanced-study.md' :
+    './prompts/short.md';
   const url = new URL(filename, import.meta.url);
   return (await readFile(url, 'utf8')).trim() + '\n';
 }
@@ -305,6 +324,26 @@ function renderStudyReply(generated: Record<string, unknown>, reference: string)
   return sections.join('\n\n');
 }
 
+function renderLeaderReply(generated: Record<string, unknown>, reference: string) {
+  const study = renderStudyReply(generated, reference);
+  const suggestedAnswers = normalizeStringArray(generated.suggested_answers ?? generated.suggestedanswers)
+    .map((item, index) => `${index + 1}. ${item}`);
+  const followUpPrompts = normalizeStringArray(generated.follow_up_prompts ?? generated.followupprompts)
+    .map((item) => `- ${item}`);
+  const facilitatorNotes = normalizeStringArray(generated.facilitator_notes ?? generated.facilitatornotes)
+    .map((item) => `- ${item}`);
+
+  return [
+    study,
+    suggestedAnswers.length ? `Suggested responses:\n${suggestedAnswers.join('\n')}` : '',
+    followUpPrompts.length ? `Follow-up prompts:\n${followUpPrompts.join('\n')}` : '',
+    facilitatorNotes.length ? `Facilitator notes:\n${facilitatorNotes.join('\n')}` : '',
+    cleanText(generated.closing_challenge ?? generated.closingchallenge)
+      ? `Closing challenge: ${cleanText(generated.closing_challenge ?? generated.closingchallenge)}`
+      : ''
+  ].filter(Boolean).join('\n\n');
+}
+
 function normalizeStringArray(value: unknown) {
   if (Array.isArray(value)) {
     return value.map((item) => cleanText(item)).filter(Boolean);
@@ -369,11 +408,13 @@ async function generateSummary(config: ReturnType<typeof getPluginConfig>, mode:
     model: config.model,
     temperature:
     mode === 'enhanced-study' ? 0.45 :
+    mode === 'leader' ? 0.45 :
     mode === 'study' ? 0.5 :
     0.4,
   
     max_tokens:
       mode === 'enhanced-study' ? 3200 :
+      mode === 'leader' ? 2600 :
       mode === 'study' ? 1500 :
       700,
     messages: [
@@ -433,7 +474,7 @@ const plugin = definePluginEntry({
   register(api: any) {
     api.registerCommand({
       name: 'bible',
-      description: 'Summarize a Bible chapter in short, study, or enhanced-study mode.',
+      description: 'Summarize a Bible chapter in short, study, leader, or enhanced-study mode.',
       acceptsArgs: true,
       handler: async (ctx: any) => {
         const pluginConfig = getPluginConfig(ctx.config);
@@ -449,6 +490,8 @@ const plugin = definePluginEntry({
           const text =
             mode === 'enhanced-study'
               ? renderEnhancedStudyReply(generated, reference)
+              : mode === 'leader'
+                ? renderLeaderReply(generated, reference)
               : mode === 'study'
                 ? renderStudyReply(generated, reference)
                 : renderShortReply(generated, reference, pluginConfig.signalMaxChars);

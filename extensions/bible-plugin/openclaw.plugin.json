@@ -53,7 +53,7 @@
       },
       "defaultMode": {
         "type": "string",
-        "enum": ["short", "study", "enhanced-study"],
+        "enum": ["short", "study", "leader", "enhanced-study"],
         "default": "study",
         "description": "Fallback response mode when no valid mode token is provided in command args."
       },

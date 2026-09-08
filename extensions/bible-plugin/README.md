@@ -6,11 +6,14 @@ Native OpenClaw `/bible` slash command plugin.
 
 - `/bible matthew 25`
 - `/bible --study matthew 25`
+- `/bible --leader matthew 25`
+- `/bible --enhanced-study matthew 25`
 
 ## What it does
 
 - short devotional chapter summaries
 - study mode with more structure (big idea, **book context**—how the chapter fits the book’s story and major themes—historical context, key points, application, prayer)
+- leader mode with the complete study plus suggested responses, follow-up prompts, facilitator notes, and a closing challenge
 - configurable OpenRouter or direct Ollama usage
 
 ## Configuration
