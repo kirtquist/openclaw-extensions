@@ -33,6 +33,7 @@ function getPluginConfig(fullConfig) {
         signalMaxChars: Number.isInteger(raw.signalMaxChars) ? raw.signalMaxChars : DEFAULTS.signalMaxChars,
         defaultMode: raw.defaultMode === 'short' ||
             raw.defaultMode === 'study' ||
+            raw.defaultMode === 'leader' ||
             raw.defaultMode === 'enhanced-study'
             ? raw.defaultMode
             : DEFAULTS.defaultMode,
@@ -70,6 +71,11 @@ function parseCommandArgs(args, defaultMode) {
                 i++;
                 continue;
             }
+            if (next === 'leader') {
+                mode = 'leader';
+                i++;
+                continue;
+            }
             if (next === 'enhanced-study' || next === 'es' || next === 'enhanced') {
                 mode = 'enhanced-study';
                 i++;
@@ -93,6 +99,10 @@ function parseCommandArgs(args, defaultMode) {
                 mode = 'short';
                 continue;
             }
+            if (value === 'leader') {
+                mode = 'leader';
+                continue;
+            }
             if (value === 'enhanced-study' || value === 'enhanced' || value === 'es') {
                 mode = 'enhanced-study';
                 continue;
@@ -106,6 +116,10 @@ function parseCommandArgs(args, defaultMode) {
         }
         if (normalized === '--short' || normalized === '-d' || normalized === 'short') {
             mode = 'short';
+            continue;
+        }
+        if (normalized === '--leader' || normalized === '-l' || normalized === 'leader') {
+            mode = 'leader';
             continue;
         }
         if (normalized === '--enhanced' ||
@@ -126,6 +140,7 @@ function usageText() {
         'Usage:',
         '/bible matthew 25',
         '/bible --study matthew 25',
+        '/bible --leader matthew 25',
         '/bible --enhanced-study matthew 25',
         '/bible study matthew 25',
         '/bible --es matthew 25',
@@ -133,7 +148,10 @@ function usageText() {
     ].join('\n');
 }
 async function loadPromptTemplate(mode) {
-    const filename = mode === 'study' ? './prompts/study.md' : mode === 'enhanced-study' ? './prompts/enhanced-study.md' : './prompts/short.md';
+    const filename = mode === 'study' ? './prompts/study.md' :
+        mode === 'leader' ? './prompts/leader.md' :
+            mode === 'enhanced-study' ? './prompts/enhanced-study.md' :
+                './prompts/short.md';
     const url = new URL(filename, import.meta.url);
     return (await readFile(url, 'utf8')).trim() + '\n';
 }
@@ -263,6 +281,24 @@ function renderStudyReply(generated, reference) {
     ].filter(Boolean);
     return sections.join('\n\n');
 }
+function renderLeaderReply(generated, reference) {
+    const study = renderStudyReply(generated, reference);
+    const suggestedAnswers = normalizeStringArray(generated.suggested_answers ?? generated.suggestedanswers)
+        .map((item, index) => `${index + 1}. ${item}`);
+    const followUpPrompts = normalizeStringArray(generated.follow_up_prompts ?? generated.followupprompts)
+        .map((item) => `- ${item}`);
+    const facilitatorNotes = normalizeStringArray(generated.facilitator_notes ?? generated.facilitatornotes)
+        .map((item) => `- ${item}`);
+    return [
+        study,
+        suggestedAnswers.length ? `Suggested responses:\n${suggestedAnswers.join('\n')}` : '',
+        followUpPrompts.length ? `Follow-up prompts:\n${followUpPrompts.join('\n')}` : '',
+        facilitatorNotes.length ? `Facilitator notes:\n${facilitatorNotes.join('\n')}` : '',
+        cleanText(generated.closing_challenge ?? generated.closingchallenge)
+            ? `Closing challenge: ${cleanText(generated.closing_challenge ?? generated.closingchallenge)}`
+            : ''
+    ].filter(Boolean).join('\n\n');
+}
 function normalizeStringArray(value) {
     if (Array.isArray(value)) {
         return value.map((item) => cleanText(item)).filter(Boolean);
@@ -319,11 +355,13 @@ async function generateSummary(config, mode, reference) {
     const payload = {
         model: config.model,
         temperature: mode === 'enhanced-study' ? 0.45 :
-            mode === 'study' ? 0.5 :
-                0.4,
+            mode === 'leader' ? 0.45 :
+                mode === 'study' ? 0.5 :
+                    0.4,
         max_tokens: mode === 'enhanced-study' ? 3200 :
-            mode === 'study' ? 1500 :
-                700,
+            mode === 'leader' ? 2600 :
+                mode === 'study' ? 1500 :
+                    700,
         messages: [
             {
                 role: 'system',
@@ -372,7 +410,7 @@ const plugin = definePluginEntry({
     register(api) {
         api.registerCommand({
             name: 'bible',
-            description: 'Summarize a Bible chapter in short, study, or enhanced-study mode.',
+            description: 'Summarize a Bible chapter in short, study, leader, or enhanced-study mode.',
             acceptsArgs: true,
             handler: async (ctx) => {
                 const pluginConfig = getPluginConfig(ctx.config);
@@ -384,9 +422,11 @@ const plugin = definePluginEntry({
                     const generated = await generateSummary(pluginConfig, mode, reference);
                     const text = mode === 'enhanced-study'
                         ? renderEnhancedStudyReply(generated, reference)
-                        : mode === 'study'
-                            ? renderStudyReply(generated, reference)
-                            : renderShortReply(generated, reference, pluginConfig.signalMaxChars);
+                        : mode === 'leader'
+                            ? renderLeaderReply(generated, reference)
+                            : mode === 'study'
+                                ? renderStudyReply(generated, reference)
+                                : renderShortReply(generated, reference, pluginConfig.signalMaxChars);
                     return { text };
                 }
                 catch (error) {
