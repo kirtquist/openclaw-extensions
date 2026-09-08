@@ -35,7 +35,8 @@ Rules:
 Field requirements:
 - book_context is 3-5 sentences.
 - historical_context is 2-3 sentences.
-- explicit_teaching must be an array of 3-6 strings stating only what the passage explicitly teaches.
+- explicit_teaching must be an array of 3-6 strings stating only what the passage explicitly teaches. Begin each string with the supporting verse or verse range from
+  the requested passage, for example: "1 Corinthians 2:4-5 — Paul’s message did not depend on persuasive human wisdom."
 - supported_inferences must be an array of 2-5 strings. Each string must include the supporting Scripture reference(s).
 - key_points must be an array of at least 4 concise bullet-style strings.
 - application must be 1-2 short paragraphs and must cite Scripture whenever it depends on inference rather than direct wording from the chapter.
