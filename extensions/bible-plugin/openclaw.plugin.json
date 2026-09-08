@@ -15,10 +15,21 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
+      "provider": {
+        "type": "string",
+        "enum": ["openrouter", "ollama"],
+        "default": "openrouter",
+        "description": "Model provider. OpenRouter uses the configured auth profile; Ollama does not send authorization."
+      },
+      "baseUrl": {
+        "type": "string",
+        "default": "https://openrouter.ai/api/v1/chat/completions",
+        "description": "OpenAI-compatible chat-completions endpoint."
+      },
       "model": {
         "type": "string",
         "default": "google/gemini-2.5-flash",
-        "description": "Default OpenRouter model ID."
+        "description": "Model ID passed directly to the configured endpoint; OpenClaw aliases are not resolved."
       },
       "signalMaxChars": {
         "type": "integer",
@@ -36,7 +47,7 @@
       "openrouterProfile": {
         "type": "string",
         "default": "openrouter:default",
-        "description": "Auth profile name in auth-profiles.json."
+        "description": "Auth profile name in auth-profiles.json; ignored for Ollama."
       }
     }
   }

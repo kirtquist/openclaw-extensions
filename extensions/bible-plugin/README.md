@@ -11,14 +11,41 @@ Native OpenClaw `/bible` slash command plugin.
 
 - short devotional chapter summaries
 - study mode with more structure (big idea, **book context**—how the chapter fits the book’s story and major themes—historical context, key points, application, prayer)
-- direct OpenRouter usage
+- configurable OpenRouter or direct Ollama usage
 
 ## Configuration
 
-- `model`
+- `provider` (`openrouter` or `ollama`)
+- `baseUrl` (the full OpenAI-compatible chat-completions endpoint)
+- `model` (passed directly to the endpoint; OpenClaw aliases are not resolved)
 - `signalMaxChars`
 - `defaultMode`
-- `openrouterProfile`
+- `openrouterProfile` (used only with OpenRouter)
+
+OpenRouter remains the default:
+
+```json
+{
+  "provider": "openrouter",
+  "baseUrl": "https://openrouter.ai/api/v1/chat/completions",
+  "model": "google/gemini-2.5-flash",
+  "openrouterProfile": "openrouter:default"
+}
+```
+
+For direct Ollama usage, configure the full OpenAI-compatible endpoint and the
+actual Ollama model name:
+
+```json
+{
+  "provider": "ollama",
+  "baseUrl": "http://100.119.77.26:11434/v1/chat/completions",
+  "model": "qwen3.5:27b"
+}
+```
+
+Ollama requests do not load an OpenRouter auth profile or send an
+`Authorization` header.
 
 ## Notes
 
