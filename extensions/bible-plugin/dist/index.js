@@ -241,6 +241,8 @@ function renderShortReply(generated, reference, signalMaxChars) {
 }
 function renderStudyReply(generated, reference) {
     const keyPoints = normalizeStudyKeyPoints(generated).map((item) => `- ${item}`);
+    const discussionQuestions = normalizeStringArray(generated.discussion_questions ?? generated.discussionquestions)
+        .map((item, index) => `${index + 1}. ${item}`);
     const sections = [
         cleanText(generated.title) || reference,
         `Reference: ${cleanText(generated.reference) || reference}`,
@@ -252,6 +254,10 @@ function renderStudyReply(generated, reference) {
             ? `Historical context: ${cleanText(generated.historical_context ?? generated.historicalcontext)}`
             : '',
         keyPoints.length ? `Key points:\n${keyPoints.join('\n')}` : '',
+        discussionQuestions.length ? `Discussion questions:\n${discussionQuestions.join('\n')}` : '',
+        cleanText(generated.action_step ?? generated.actionstep)
+            ? `Action step: ${cleanText(generated.action_step ?? generated.actionstep)}`
+            : '',
         cleanText(generated.application) ? `Application: ${cleanText(generated.application)}` : '',
         cleanText(generated.prayer) ? `Prayer: ${cleanText(generated.prayer)}` : ''
     ].filter(Boolean);
@@ -270,6 +276,8 @@ function normalizeStringArray(value) {
     return [];
 }
 function renderEnhancedStudyReply(generated, reference) {
+    const passageStructure = normalizeStringArray(generated.passage_structure ?? generated.passagestructure)
+        .map((item) => `- ${item}`);
     const explicitTeaching = normalizeStringArray(generated.explicit_teaching).map((item) => `- ${item}`);
     const supportedInferences = normalizeStringArray(generated.supported_inferences).map((item) => `- ${item}`);
     const keyPoints = normalizeStringArray(generated.key_points ?? generated.keypoints).map((item) => `- ${item}`);
@@ -283,6 +291,7 @@ function renderEnhancedStudyReply(generated, reference) {
         cleanText(generated.historical_context ?? generated.historicalcontext)
             ? `Historical context: ${cleanText(generated.historical_context ?? generated.historicalcontext)}`
             : '',
+        passageStructure.length ? `Passage structure:\n${passageStructure.join('\n')}` : '',
         explicitTeaching.length ? `Explicit teaching:\n${explicitTeaching.join('\n')}` : '',
         supportedInferences.length ? `Supported inferences:\n${supportedInferences.join('\n')}` : '',
         keyPoints.length ? `Key points:\n${keyPoints.join('\n')}` : '',

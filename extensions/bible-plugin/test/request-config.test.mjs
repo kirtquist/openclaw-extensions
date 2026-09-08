@@ -22,7 +22,10 @@ function successfulResponse() {
           content: JSON.stringify({
             title: 'Test',
             reference: 'John 3',
-            big_idea: 'Test response'
+            big_idea: 'Test response',
+            passage_structure: ['John 3:1-8 — Jesus teaches Nicodemus'],
+            discussion_questions: ['How does the book context sharpen your reading of John 3:1-8?'],
+            action_step: 'John 3:21 — Practice walking openly in the light this week.'
           })
         }
       }]
@@ -47,7 +50,7 @@ test('Ollama uses configured endpoint, reasoning effort, and timeout without aut
   };
 
   try {
-    await handler({
+    const result = await handler({
       args: 'john 3',
       config: {
         plugins: {
@@ -65,6 +68,9 @@ test('Ollama uses configured endpoint, reasoning effort, and timeout without aut
         }
       }
     });
+    assert.match(result.text, /Discussion questions:/);
+    assert.match(result.text, /book context sharpen/);
+    assert.match(result.text, /Action step:/);
   } finally {
     globalThis.fetch = originalFetch;
     AbortSignal.timeout = originalTimeout;
@@ -89,8 +95,8 @@ test('OpenRouter keeps bearer authentication and omits Ollama reasoning control'
   };
 
   try {
-    await handler({
-      args: 'john 3',
+    const result = await handler({
+      args: '--enhanced-study john 3',
       config: {
         plugins: {
           entries: {
@@ -106,6 +112,8 @@ test('OpenRouter keeps bearer authentication and omits Ollama reasoning control'
         }
       }
     });
+    assert.match(result.text, /Passage structure:/);
+    assert.match(result.text, /John 3:1-8/);
   } finally {
     globalThis.fetch = originalFetch;
   }
