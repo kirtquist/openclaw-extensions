@@ -9,11 +9,18 @@ const DEFAULTS = {
   provider: 'openrouter',
   baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
   model: 'google/gemini-2.5-flash',
+  reasoningEffort: 'none',
+  requestTimeoutMs: 45000,
   signalMaxChars: 1400,
   defaultMode: 'study'
 } as const;
 
 type BibleMode = 'short' | 'study' | 'enhanced-study';
+type ReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'max';
+
+function isReasoningEffort(value: unknown): value is ReasoningEffort {
+  return value === 'none' || value === 'low' || value === 'medium' || value === 'high' || value === 'max';
+}
 
 function getPluginConfig(fullConfig: any) {
   const entry = fullConfig?.plugins?.entries?.[PLUGIN_ID];
@@ -25,6 +32,13 @@ function getPluginConfig(fullConfig: any) {
         ? raw.baseUrl.trim()
         : DEFAULTS.baseUrl,
     model: typeof raw.model === 'string' && raw.model.trim() ? raw.model.trim() : DEFAULTS.model,
+    reasoningEffort: isReasoningEffort(raw.reasoningEffort)
+      ? raw.reasoningEffort
+      : DEFAULTS.reasoningEffort,
+    requestTimeoutMs:
+      Number.isInteger(raw.requestTimeoutMs) && raw.requestTimeoutMs >= 1000 && raw.requestTimeoutMs <= 900000
+        ? raw.requestTimeoutMs
+        : DEFAULTS.requestTimeoutMs,
     signalMaxChars: Number.isInteger(raw.signalMaxChars) ? raw.signalMaxChars : DEFAULTS.signalMaxChars,
     defaultMode: 
        raw.defaultMode === 'short' ||
@@ -342,7 +356,7 @@ async function generateSummary(config: ReturnType<typeof getPluginConfig>, mode:
   const apiKey = config.provider === 'openrouter'
     ? resolveOpenRouterApiKey(config)
     : undefined;
-  const payload = {
+  const payload: Record<string, unknown> = {
     model: config.model,
     temperature:
     mode === 'enhanced-study' ? 0.45 :
@@ -365,6 +379,10 @@ async function generateSummary(config: ReturnType<typeof getPluginConfig>, mode:
     ]
   };
 
+  if (config.provider === 'ollama') {
+    payload.reasoning_effort = config.reasoningEffort;
+  }
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json'
   };
@@ -379,7 +397,7 @@ async function generateSummary(config: ReturnType<typeof getPluginConfig>, mode:
     method: 'POST',
     headers,
     body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(45000)
+    signal: AbortSignal.timeout(config.requestTimeoutMs)
   });
 
   if (!response.ok) {

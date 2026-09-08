@@ -18,6 +18,8 @@ Native OpenClaw `/bible` slash command plugin.
 - `provider` (`openrouter` or `ollama`)
 - `baseUrl` (the full OpenAI-compatible chat-completions endpoint)
 - `model` (passed directly to the endpoint; OpenClaw aliases are not resolved)
+- `reasoningEffort` (`none`, `low`, `medium`, `high`, or `max`; sent for Ollama)
+- `requestTimeoutMs` (1,000–900,000 milliseconds)
 - `signalMaxChars`
 - `defaultMode`
 - `openrouterApiKey` (used only with OpenRouter)
@@ -40,12 +42,16 @@ actual Ollama model name:
 {
   "provider": "ollama",
   "baseUrl": "http://100.119.77.26:11434/v1/chat/completions",
-  "model": "qwen3.5:27b"
+  "model": "qwen3.5:27b",
+  "reasoningEffort": "none",
+  "requestTimeoutMs": 300000
 }
 ```
 
 Ollama requests do not load an OpenRouter API key or send an `Authorization`
-header.
+header. Setting `reasoningEffort` to `none` prevents thinking-capable models
+from consuming the response budget on hidden reasoning before returning the
+requested JSON.
 
 ## Auth
 
