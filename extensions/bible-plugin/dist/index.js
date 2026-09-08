@@ -1,17 +1,20 @@
 import { readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { definePluginEntry } from 'openclaw/plugin-sdk/core';
 const PLUGIN_ID = 'bible-plugin';
 const PLUGIN_NAME = 'Bible Plugin';
-const AUTH_FILE = `${homedir()}/.openclaw/agents/main/agent/auth-profiles.json`;
+const MISSING_OPENROUTER_API_KEY_MESSAGE = 'Bible plugin needs an OpenRouter API key configured via plugin config field openrouterApiKey or OPENROUTER_API_KEY.';
 const DEFAULTS = {
     provider: 'openrouter',
     baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
     model: 'google/gemini-2.5-flash',
+    reasoningEffort: 'none',
+    requestTimeoutMs: 45000,
     signalMaxChars: 1400,
-    defaultMode: 'study',
-    openrouterProfile: 'openrouter:default'
+    defaultMode: 'study'
 };
+function isReasoningEffort(value) {
+    return value === 'none' || value === 'low' || value === 'medium' || value === 'high' || value === 'max';
+}
 function getPluginConfig(fullConfig) {
     const entry = fullConfig?.plugins?.entries?.[PLUGIN_ID];
     const raw = entry?.config ?? entry ?? {};
@@ -21,15 +24,21 @@ function getPluginConfig(fullConfig) {
             ? raw.baseUrl.trim()
             : DEFAULTS.baseUrl,
         model: typeof raw.model === 'string' && raw.model.trim() ? raw.model.trim() : DEFAULTS.model,
+        reasoningEffort: isReasoningEffort(raw.reasoningEffort)
+            ? raw.reasoningEffort
+            : DEFAULTS.reasoningEffort,
+        requestTimeoutMs: Number.isInteger(raw.requestTimeoutMs) && raw.requestTimeoutMs >= 1000 && raw.requestTimeoutMs <= 900000
+            ? raw.requestTimeoutMs
+            : DEFAULTS.requestTimeoutMs,
         signalMaxChars: Number.isInteger(raw.signalMaxChars) ? raw.signalMaxChars : DEFAULTS.signalMaxChars,
         defaultMode: raw.defaultMode === 'short' ||
             raw.defaultMode === 'study' ||
             raw.defaultMode === 'enhanced-study'
             ? raw.defaultMode
             : DEFAULTS.defaultMode,
-        openrouterProfile: typeof raw.openrouterProfile === 'string' && raw.openrouterProfile.trim()
-            ? raw.openrouterProfile.trim()
-            : DEFAULTS.openrouterProfile
+        openrouterApiKey: typeof raw.openrouterApiKey === 'string' && raw.openrouterApiKey.trim()
+            ? raw.openrouterApiKey.trim()
+            : undefined
     };
 }
 function normalizeModeToken(token) {
@@ -282,19 +291,21 @@ function renderEnhancedStudyReply(generated, reference) {
     ].filter(Boolean);
     return sections.join('\n\n');
 }
-async function loadOpenRouterKey(profileName) {
-    const auth = JSON.parse(await readFile(AUTH_FILE, 'utf8'));
-    const key = auth?.profiles?.[profileName]?.key;
-    if (!key || typeof key !== 'string') {
-        throw new Error(`OpenRouter profile not found: ${profileName}`);
+function resolveOpenRouterApiKey(config) {
+    if (config.openrouterApiKey) {
+        return config.openrouterApiKey;
     }
-    return key;
+    const envKey = process.env.OPENROUTER_API_KEY?.trim();
+    if (envKey) {
+        return envKey;
+    }
+    throw new Error(MISSING_OPENROUTER_API_KEY_MESSAGE);
 }
 async function generateSummary(config, mode, reference) {
     const promptTemplate = await loadPromptTemplate(mode);
     const prompt = fillPrompt(promptTemplate, reference);
     const apiKey = config.provider === 'openrouter'
-        ? await loadOpenRouterKey(config.openrouterProfile)
+        ? resolveOpenRouterApiKey(config)
         : undefined;
     const payload = {
         model: config.model,
@@ -315,6 +326,9 @@ async function generateSummary(config, mode, reference) {
             }
         ]
     };
+    if (config.provider === 'ollama') {
+        payload.reasoning_effort = config.reasoningEffort;
+    }
     const headers = {
         'Content-Type': 'application/json'
     };
@@ -327,7 +341,7 @@ async function generateSummary(config, mode, reference) {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(45000)
+        signal: AbortSignal.timeout(config.requestTimeoutMs)
     });
     if (!response.ok) {
         const body = await response.text().catch(() => '');
@@ -367,9 +381,10 @@ const plugin = definePluginEntry({
                     return { text };
                 }
                 catch (error) {
+                    console.error('[bible-plugin] request failed:', error?.message ?? error);
                     return {
-                        text: error?.message && String(error.message).includes('OpenRouter profile not found')
-                            ? 'Bible plugin is missing a usable OpenRouter profile. Check plugin config and auth profiles.'
+                        text: error?.message === MISSING_OPENROUTER_API_KEY_MESSAGE
+                            ? MISSING_OPENROUTER_API_KEY_MESSAGE
                             : 'Bible plugin could not complete that request right now. Please try again in a moment.'
                     };
                 }

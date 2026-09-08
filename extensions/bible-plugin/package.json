@@ -10,7 +10,8 @@
     "openclaw.plugin.json"
   ],
   "scripts": {
-    "build": "tsc && mkdir -p dist/prompts && cp prompts/*.md dist/prompts/"
+    "build": "tsc && mkdir -p dist/prompts && cp prompts/*.md dist/prompts/",
+    "test": "npm run build && node --test test/*.test.mjs"
   },
   "openclaw": {
     "extensions": [

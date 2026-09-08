@@ -31,6 +31,19 @@
         "default": "google/gemini-2.5-flash",
         "description": "Model ID passed directly to the configured endpoint; OpenClaw aliases are not resolved."
       },
+      "reasoningEffort": {
+        "type": "string",
+        "enum": ["none", "low", "medium", "high", "max"],
+        "default": "none",
+        "description": "Reasoning effort sent to direct Ollama requests. Use none to disable thinking overhead."
+      },
+      "requestTimeoutMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 900000,
+        "default": 45000,
+        "description": "Maximum model request duration in milliseconds."
+      },
       "signalMaxChars": {
         "type": "integer",
         "minimum": 200,
