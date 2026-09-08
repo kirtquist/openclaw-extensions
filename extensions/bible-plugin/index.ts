@@ -5,8 +5,9 @@ import { definePluginEntry } from 'openclaw/plugin-sdk/core';
 const PLUGIN_ID = 'bible-plugin';
 const PLUGIN_NAME = 'Bible Plugin';
 const AUTH_FILE = `${homedir()}/.openclaw/agents/main/agent/auth-profiles.json`;
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULTS = {
+  provider: 'openrouter',
+  baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
   model: 'google/gemini-2.5-flash',
   signalMaxChars: 1400,
   defaultMode: 'study',
@@ -19,6 +20,11 @@ function getPluginConfig(fullConfig: any) {
   const entry = fullConfig?.plugins?.entries?.[PLUGIN_ID];
   const raw = entry?.config ?? entry ?? {};
   return {
+    provider: raw.provider === 'ollama' ? 'ollama' : DEFAULTS.provider,
+    baseUrl:
+      typeof raw.baseUrl === 'string' && raw.baseUrl.trim()
+        ? raw.baseUrl.trim()
+        : DEFAULTS.baseUrl,
     model: typeof raw.model === 'string' && raw.model.trim() ? raw.model.trim() : DEFAULTS.model,
     signalMaxChars: Number.isInteger(raw.signalMaxChars) ? raw.signalMaxChars : DEFAULTS.signalMaxChars,
     defaultMode: 
@@ -331,7 +337,9 @@ async function loadOpenRouterKey(profileName: string) {
 async function generateSummary(config: ReturnType<typeof getPluginConfig>, mode: BibleMode, reference: string) {
   const promptTemplate = await loadPromptTemplate(mode);
   const prompt = fillPrompt(promptTemplate, reference);
-  const apiKey = await loadOpenRouterKey(config.openrouterProfile);
+  const apiKey = config.provider === 'openrouter'
+    ? await loadOpenRouterKey(config.openrouterProfile)
+    : undefined;
   const payload = {
     model: config.model,
     temperature:
@@ -355,21 +363,26 @@ async function generateSummary(config: ReturnType<typeof getPluginConfig>, mode:
     ]
   };
 
-  const response = await fetch(OPENROUTER_URL, {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+    headers['HTTP-Referer'] = 'https://openclaw.local';
+    headers['X-Title'] = 'OpenClaw Bible Plugin';
+  }
+
+  const response = await fetch(config.baseUrl, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://openclaw.local',
-      'X-Title': 'OpenClaw Bible Plugin'
-    },
+    headers,
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(45000)
   });
 
   if (!response.ok) {
     const body = await response.text().catch(() => '');
-    throw new Error(`OpenRouter error (${response.status}): ${body}`);
+    throw new Error(`Model API error (${response.status}): ${body}`);
   }
 
   const data = await response.json();
