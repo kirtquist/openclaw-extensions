@@ -17,44 +17,207 @@ const DEFAULTS = {
   defaultMode: 'study'
 } as const;
 
-type BibleMode = 'short' | 'study' | 'leader' | 'enhanced-study';
+const DEFAULT_FAILOVER = {
+  provider: 'openrouter',
+  baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
+  model: 'google/gemini-3-flash-preview',
+  reasoningEffort: 'none',
+  requestTimeoutMs: 120000
+} as const;
+
+const FAILOVER_NOTE = '\n\n(Used OpenRouter fallback — local Ollama was unavailable.)';
+
+const BIBLE_MODES = ['short', 'study', 'leader', 'enhanced-study'] as const;
+
+type BibleMode = (typeof BIBLE_MODES)[number];
 type ReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'max';
+type Provider = 'openrouter' | 'ollama';
+
+type RequestEndpointConfig = {
+  provider: Provider;
+  baseUrl: string;
+  model: string;
+  reasoningEffort: ReasoningEffort;
+  requestTimeoutMs: number;
+  openrouterApiKey?: string;
+};
+
+type ModeOverrideConfig = Partial<RequestEndpointConfig> & {
+  failover?: boolean | Partial<RequestEndpointConfig>;
+};
+
+export type BiblePluginConfig = RequestEndpointConfig & {
+  signalMaxChars: number;
+  defaultMode: BibleMode;
+  failover?: Partial<RequestEndpointConfig>;
+  modes?: Partial<Record<BibleMode, ModeOverrideConfig>>;
+};
 
 function isReasoningEffort(value: unknown): value is ReasoningEffort {
   return value === 'none' || value === 'low' || value === 'medium' || value === 'high' || value === 'max';
 }
 
-function getPluginConfig(fullConfig: any) {
-  const entry = fullConfig?.plugins?.entries?.[PLUGIN_ID];
-  const raw = entry?.config ?? entry ?? {};
+function isBibleMode(value: unknown): value is BibleMode {
+  return typeof value === 'string' && (BIBLE_MODES as readonly string[]).includes(value);
+}
+
+function parseRequestTimeoutMs(value: unknown, fallback: number) {
+  return Number.isInteger(value) && (value as number) >= 1000 && (value as number) <= 900000
+    ? (value as number)
+    : fallback;
+}
+
+function parseEndpointPartial(
+  raw: Record<string, unknown>,
+  fallback: RequestEndpointConfig
+): RequestEndpointConfig {
   return {
-    provider: raw.provider === 'ollama' ? 'ollama' : DEFAULTS.provider,
+    provider:
+      raw.provider === 'ollama' ? 'ollama' : raw.provider === 'openrouter' ? 'openrouter' : fallback.provider,
     baseUrl:
-      typeof raw.baseUrl === 'string' && raw.baseUrl.trim()
-        ? raw.baseUrl.trim()
-        : DEFAULTS.baseUrl,
-    model: typeof raw.model === 'string' && raw.model.trim() ? raw.model.trim() : DEFAULTS.model,
-    reasoningEffort: isReasoningEffort(raw.reasoningEffort)
-      ? raw.reasoningEffort
-      : DEFAULTS.reasoningEffort,
-    requestTimeoutMs:
-      Number.isInteger(raw.requestTimeoutMs) && raw.requestTimeoutMs >= 1000 && raw.requestTimeoutMs <= 900000
-        ? raw.requestTimeoutMs
-        : DEFAULTS.requestTimeoutMs,
-    signalMaxChars: Number.isInteger(raw.signalMaxChars) ? raw.signalMaxChars : DEFAULTS.signalMaxChars,
-    defaultMode: 
-       raw.defaultMode === 'short' ||
-       raw.defaultMode === 'study' ||
-       raw.defaultMode === 'leader' ||
-       raw.defaultMode === 'enhanced-study'
-         ? raw.defaultMode
-         : DEFAULTS.defaultMode,
+      typeof raw.baseUrl === 'string' && raw.baseUrl.trim() ? raw.baseUrl.trim() : fallback.baseUrl,
+    model: typeof raw.model === 'string' && raw.model.trim() ? raw.model.trim() : fallback.model,
+    reasoningEffort: isReasoningEffort(raw.reasoningEffort) ? raw.reasoningEffort : fallback.reasoningEffort,
+    requestTimeoutMs: parseRequestTimeoutMs(raw.requestTimeoutMs, fallback.requestTimeoutMs),
     openrouterApiKey:
       typeof raw.openrouterApiKey === 'string' && raw.openrouterApiKey.trim()
         ? raw.openrouterApiKey.trim()
-        : undefined
+        : fallback.openrouterApiKey
   };
 }
+
+function parseModeEndpointOverride(raw: Record<string, unknown>): Partial<RequestEndpointConfig> {
+  const override: Partial<RequestEndpointConfig> = {};
+  if (raw.provider === 'ollama' || raw.provider === 'openrouter') {
+    override.provider = raw.provider;
+  }
+  if (typeof raw.baseUrl === 'string' && raw.baseUrl.trim()) {
+    override.baseUrl = raw.baseUrl.trim();
+  }
+  if (typeof raw.model === 'string' && raw.model.trim()) {
+    override.model = raw.model.trim();
+  }
+  if (isReasoningEffort(raw.reasoningEffort)) {
+    override.reasoningEffort = raw.reasoningEffort;
+  }
+  if (Number.isInteger(raw.requestTimeoutMs)) {
+    override.requestTimeoutMs = parseRequestTimeoutMs(raw.requestTimeoutMs, DEFAULTS.requestTimeoutMs);
+  }
+  if (typeof raw.openrouterApiKey === 'string' && raw.openrouterApiKey.trim()) {
+    override.openrouterApiKey = raw.openrouterApiKey.trim();
+  }
+  return override;
+}
+
+function parseModeOverrides(raw: unknown): Partial<Record<BibleMode, ModeOverrideConfig>> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return undefined;
+  }
+
+  const modes: Partial<Record<BibleMode, ModeOverrideConfig>> = {};
+  for (const mode of BIBLE_MODES) {
+    const entry = (raw as Record<string, unknown>)[mode];
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      continue;
+    }
+    const record = entry as Record<string, unknown>;
+    const override: ModeOverrideConfig = parseModeEndpointOverride(record);
+    if (record.failover === true || record.failover === false) {
+      override.failover = record.failover;
+    } else if (record.failover && typeof record.failover === 'object' && !Array.isArray(record.failover)) {
+      override.failover = parseModeEndpointOverride(record.failover as Record<string, unknown>);
+    }
+    if (Object.keys(override).length > 0) {
+      modes[mode] = override;
+    }
+  }
+
+  return Object.keys(modes).length > 0 ? modes : undefined;
+}
+
+function getPluginConfig(fullConfig: any): BiblePluginConfig {
+  const entry = fullConfig?.plugins?.entries?.[PLUGIN_ID];
+  const raw = entry?.config ?? entry ?? {};
+  const baseFallback: RequestEndpointConfig = {
+    provider: DEFAULTS.provider,
+    baseUrl: DEFAULTS.baseUrl,
+    model: DEFAULTS.model,
+    reasoningEffort: DEFAULTS.reasoningEffort,
+    requestTimeoutMs: DEFAULTS.requestTimeoutMs,
+    openrouterApiKey: undefined
+  };
+  const endpoint = parseEndpointPartial(raw, baseFallback);
+  if (typeof raw.openrouterApiKey === 'string' && raw.openrouterApiKey.trim()) {
+    endpoint.openrouterApiKey = raw.openrouterApiKey.trim();
+  }
+
+  let failover: Partial<RequestEndpointConfig> | undefined;
+  if (raw.failover && typeof raw.failover === 'object' && !Array.isArray(raw.failover)) {
+    failover = parseModeEndpointOverride(raw.failover as Record<string, unknown>);
+  }
+
+  return {
+    ...endpoint,
+    signalMaxChars: Number.isInteger(raw.signalMaxChars) ? raw.signalMaxChars : DEFAULTS.signalMaxChars,
+    defaultMode: isBibleMode(raw.defaultMode) ? raw.defaultMode : DEFAULTS.defaultMode,
+    failover,
+    modes: parseModeOverrides(raw.modes)
+  };
+}
+
+function toRequestEndpoint(config: BiblePluginConfig): RequestEndpointConfig {
+  return {
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+    model: config.model,
+    reasoningEffort: config.reasoningEffort,
+    requestTimeoutMs: config.requestTimeoutMs,
+    openrouterApiKey: config.openrouterApiKey
+  };
+}
+
+export function resolveRequestConfig(config: BiblePluginConfig, mode: BibleMode): RequestEndpointConfig {
+  const base = toRequestEndpoint(config);
+  const override = config.modes?.[mode];
+  if (!override) {
+    return base;
+  }
+  const { failover: _failover, ...endpointOverride } = override;
+  return parseEndpointPartial(endpointOverride as Record<string, unknown>, base);
+}
+
+export function resolveFailoverEndpoint(
+  config: BiblePluginConfig,
+  mode: BibleMode
+): RequestEndpointConfig | undefined {
+  const setting = config.modes?.[mode]?.failover;
+  if (setting === false || setting === undefined) {
+    return undefined;
+  }
+
+  const fallback: RequestEndpointConfig = {
+    provider: DEFAULT_FAILOVER.provider,
+    baseUrl: DEFAULT_FAILOVER.baseUrl,
+    model: DEFAULT_FAILOVER.model,
+    reasoningEffort: DEFAULT_FAILOVER.reasoningEffort,
+    requestTimeoutMs: DEFAULT_FAILOVER.requestTimeoutMs,
+    openrouterApiKey: config.openrouterApiKey
+  };
+
+  let partial: Partial<RequestEndpointConfig> | undefined;
+  if (setting === true) {
+    if (!config.failover || Object.keys(config.failover).length === 0) {
+      partial = {};
+    } else {
+      partial = config.failover;
+    }
+  } else {
+    partial = { ...config.failover, ...setting };
+  }
+
+  return parseEndpointPartial(partial as Record<string, unknown>, fallback);
+}
+
 function normalizeModeToken(token: string) {
   return token
     .normalize('NFKC')
@@ -444,6 +607,39 @@ function hintForHttpStatus(status: number) {
 
 const MODEL_API_ERROR_RE = /^Model API error \((\d{3})\):\s*([\s\S]*)$/;
 
+export function isFailoverEligibleError(error: unknown, primaryProvider: Provider) {
+  if (primaryProvider !== 'ollama') {
+    return false;
+  }
+
+  const message = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+  const name = error instanceof Error ? error.name : '';
+
+  if (message === 'Model response did not contain parseable JSON') {
+    return false;
+  }
+
+  const modelMatch = message.match(MODEL_API_ERROR_RE);
+  if (modelMatch) {
+    const status = Number(modelMatch[1]);
+    return status === 502 || status === 503 || status === 504;
+  }
+
+  if (
+    name === 'TimeoutError' ||
+    name === 'AbortError' ||
+    /timed?\s*out/i.test(message) ||
+    message.includes('The operation was aborted')
+  ) {
+    return true;
+  }
+
+  return (
+    /fetch failed|ECONNREFUSED|ENOTFOUND|ECONNRESET|network/i.test(message) ||
+    message.includes('Failed to fetch')
+  );
+}
+
 function formatUserFacingError(error: unknown) {
   const message =
     error instanceof Error ? error.message : typeof error === 'string' ? error : '';
@@ -499,7 +695,7 @@ function formatUserFacingError(error: unknown) {
   return truncateForDisplay(`${GENERIC_REQUEST_FAILURE_MESSAGE} Detail: ${message}`, 900);
 }
 
-function resolveOpenRouterApiKey(config: ReturnType<typeof getPluginConfig>) {
+function resolveOpenRouterApiKey(config: RequestEndpointConfig) {
   if (config.openrouterApiKey) {
     return config.openrouterApiKey;
   }
@@ -512,7 +708,7 @@ function resolveOpenRouterApiKey(config: ReturnType<typeof getPluginConfig>) {
   throw new Error(MISSING_OPENROUTER_API_KEY_MESSAGE);
 }
 
-async function generateSummary(config: ReturnType<typeof getPluginConfig>, mode: BibleMode, reference: string) {
+async function generateSummary(config: RequestEndpointConfig, mode: BibleMode, reference: string) {
   const promptTemplate = await loadPromptTemplate(mode);
   const prompt = fillPrompt(promptTemplate, reference);
   const apiKey = config.provider === 'openrouter'
@@ -580,6 +776,34 @@ async function generateSummary(config: ReturnType<typeof getPluginConfig>, mode:
   return normalizeFields(extractJsonContent(content));
 }
 
+async function generateSummaryWithOptionalFailover(
+  pluginConfig: BiblePluginConfig,
+  mode: BibleMode,
+  reference: string
+) {
+  const primary = resolveRequestConfig(pluginConfig, mode);
+  const failoverEndpoint = resolveFailoverEndpoint(pluginConfig, mode);
+
+  try {
+    const generated = await generateSummary(primary, mode, reference);
+    return { generated, usedFailover: false };
+  } catch (primaryError) {
+    if (!failoverEndpoint || !isFailoverEligibleError(primaryError, primary.provider)) {
+      throw primaryError;
+    }
+
+    console.error(
+      '[bible-plugin] primary request failed, attempting failover:',
+      primaryError instanceof Error ? primaryError.message : primaryError
+    );
+    console.error(
+      `[bible-plugin] mode=${mode} failover=${failoverEndpoint.provider}/${failoverEndpoint.model}`
+    );
+
+    const generated = await generateSummary(failoverEndpoint, mode, reference);
+    return { generated, usedFailover: true };
+  }
+}
 
 const plugin = definePluginEntry({
   id: PLUGIN_ID,
@@ -599,9 +823,13 @@ const plugin = definePluginEntry({
         }
 
         try {
-          const generated = await generateSummary(pluginConfig, mode as BibleMode, reference);
+          const { generated, usedFailover } = await generateSummaryWithOptionalFailover(
+            pluginConfig,
+            mode as BibleMode,
+            reference
+          );
 
-          const text =
+          let text =
             mode === 'enhanced-study'
               ? renderEnhancedStudyReply(generated, reference)
               : mode === 'leader'
@@ -609,6 +837,10 @@ const plugin = definePluginEntry({
               : mode === 'study'
                 ? renderStudyReply(generated, reference)
                 : renderShortReply(generated, reference, pluginConfig.signalMaxChars);
+
+          if (usedFailover) {
+            text += FAILOVER_NOTE;
+          }
 
           return { text };
         } catch (error: any) {

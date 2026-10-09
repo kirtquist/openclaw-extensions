@@ -4,6 +4,11 @@ This file tracks local changes made to the Bible plugin after the original repo 
 
 ## 2026-10-09
 
+### Per-mode providers and Ollama failover
+- Added optional `modes` overrides and `failover` OpenRouter profile in plugin config.
+- Modes can opt in with `modes.<mode>.failover: true` for one retry when local Ollama is unreachable.
+- Exported `resolveRequestConfig`, `resolveFailoverEndpoint`, and `isFailoverEligibleError` for tests.
+
 ### Clearer error messages for model API failures
 - `/bible` no longer replaces most failures with a single generic retry message.
 - OpenRouter and other model HTTP errors now show status code, provider message when available, and hints for common cases (401 auth, 402 credits, 429 quota/rate limit, timeouts, network).

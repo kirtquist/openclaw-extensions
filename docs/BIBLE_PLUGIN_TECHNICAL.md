@@ -81,6 +81,13 @@ Study mode key point handling is tolerant to minor schema drift:
 
 The plugin also strips fenced JSON if the model returns a code block.
 
+## Per-mode endpoints and failover
+
+- Top-level `plugins.entries.bible-plugin.config` fields are the default endpoint for all modes.
+- Optional `modes.short|study|leader|enhanced-study` objects merge over those defaults per request.
+- Optional `failover` defines the secondary endpoint (defaults to OpenRouter `google/gemini-3-flash-preview`).
+- A mode uses failover only when `modes.<mode>.failover` is `true` or a partial failover object, primary `provider` is `ollama`, and the error is eligible (network, timeout, HTTP 502/503/504). No failover on 4xx or invalid JSON.
+
 ## Error behavior
 
 User-facing failures should stay short and safe:

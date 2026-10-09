@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import plugin from '../dist/index.js';
+import plugin, {
+  isFailoverEligibleError,
+  resolveFailoverEndpoint,
+  resolveRequestConfig
+} from '../dist/index.js';
 
 function getHandler() {
   let handler;
@@ -223,6 +227,152 @@ test('OpenRouter HTTP errors surface quota and status details to the user', asyn
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('resolveRequestConfig merges per-mode overrides', () => {
+  const config = {
+    provider: 'ollama',
+    baseUrl: 'http://ollama.test/v1/chat/completions',
+    model: 'qwen3.5:27b',
+    reasoningEffort: 'none',
+    requestTimeoutMs: 300000,
+    signalMaxChars: 1400,
+    defaultMode: 'study',
+    modes: {
+      short: {
+        provider: 'openrouter',
+        baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
+        model: 'google/gemini-3-flash-preview',
+        requestTimeoutMs: 60000
+      }
+    }
+  };
+
+  const study = resolveRequestConfig(config, 'study');
+  assert.equal(study.provider, 'ollama');
+  assert.equal(study.model, 'qwen3.5:27b');
+
+  const short = resolveRequestConfig(config, 'short');
+  assert.equal(short.provider, 'openrouter');
+  assert.equal(short.model, 'google/gemini-3-flash-preview');
+  assert.equal(short.requestTimeoutMs, 60000);
+});
+
+test('Ollama primary failure fails over to OpenRouter when mode opts in', async () => {
+  const handler = getHandler();
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+
+  globalThis.fetch = async (url, options) => {
+    calls += 1;
+    if (calls === 1) {
+      throw new Error('fetch failed');
+    }
+    assert.match(String(url), /openrouter\.failover/);
+    assert.equal(options.headers.Authorization, 'Bearer failover-key');
+    return successfulResponse();
+  };
+
+  try {
+    const result = await handler({
+      args: '--leader john 3',
+      config: {
+        plugins: {
+          entries: {
+            'bible-plugin': {
+              config: {
+                provider: 'ollama',
+                baseUrl: 'http://ollama.test/v1/chat/completions',
+                model: 'qwen3.5:27b',
+                openrouterApiKey: 'failover-key',
+                failover: {
+                  baseUrl: 'http://openrouter.failover/v1/chat/completions',
+                  model: 'google/gemini-3-flash-preview'
+                },
+                modes: {
+                  leader: { failover: true }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+    assert.equal(calls, 2);
+    assert.match(result.text, /Closing challenge:/);
+    assert.match(result.text, /OpenRouter fallback/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('Ollama HTTP 404 does not attempt failover', async () => {
+  const handler = getHandler();
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+
+  globalThis.fetch = async () => {
+    calls += 1;
+    return {
+      ok: false,
+      status: 404,
+      text: async () => 'model not found'
+    };
+  };
+
+  try {
+    const result = await handler({
+      args: '--leader john 3',
+      config: {
+        plugins: {
+          entries: {
+            'bible-plugin': {
+              config: {
+                provider: 'ollama',
+                baseUrl: 'http://ollama.test/v1/chat/completions',
+                model: 'missing-model',
+                openrouterApiKey: 'failover-key',
+                failover: { model: 'google/gemini-3-flash-preview' },
+                modes: { leader: { failover: true } }
+              }
+            }
+          }
+        }
+      }
+    });
+    assert.equal(calls, 1);
+    assert.match(result.text, /HTTP 404/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('isFailoverEligibleError accepts network failures for Ollama only', () => {
+  assert.equal(isFailoverEligibleError(new Error('fetch failed'), 'ollama'), true);
+  assert.equal(isFailoverEligibleError(new Error('fetch failed'), 'openrouter'), false);
+  assert.equal(
+    isFailoverEligibleError(new Error('Model API error (404): missing'), 'ollama'),
+    false
+  );
+  assert.equal(
+    isFailoverEligibleError(new Error('Model API error (503): unavailable'), 'ollama'),
+    true
+  );
+});
+
+test('resolveFailoverEndpoint returns undefined when mode failover is disabled', () => {
+  const config = {
+    provider: 'ollama',
+    baseUrl: 'http://ollama.test/v1/chat/completions',
+    model: 'qwen3.5:27b',
+    reasoningEffort: 'none',
+    requestTimeoutMs: 300000,
+    signalMaxChars: 1400,
+    defaultMode: 'study',
+    failover: { model: 'google/gemini-3-flash-preview' },
+    modes: { leader: { failover: false } }
+  };
+  assert.equal(resolveFailoverEndpoint(config, 'leader'), undefined);
 });
 
 test('Missing OpenRouter key returns the configured setup message', async () => {
