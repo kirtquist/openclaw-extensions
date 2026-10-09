@@ -184,3 +184,77 @@ test('OpenRouter keeps bearer authentication and omits Ollama reasoning control'
   assert.equal(request.options.headers.Authorization, 'Bearer test-key');
   assert.equal(payload.reasoning_effort, undefined);
 });
+
+test('OpenRouter HTTP errors surface quota and status details to the user', async () => {
+  const handler = getHandler();
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 429,
+    text: async () =>
+      JSON.stringify({
+        error: {
+          message: 'Rate limit exceeded: free-models-per-day',
+          code: 429
+        }
+      })
+  });
+
+  try {
+    const result = await handler({
+      args: 'john 3',
+      config: {
+        plugins: {
+          entries: {
+            'bible-plugin': {
+              config: {
+                provider: 'openrouter',
+                openrouterApiKey: 'test-key'
+              }
+            }
+          }
+        }
+      }
+    });
+    assert.match(result.text, /HTTP 429/);
+    assert.match(result.text, /Rate limit exceeded/);
+    assert.match(result.text, /quota/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('Missing OpenRouter key returns the configured setup message', async () => {
+  const handler = getHandler();
+  const originalFetch = globalThis.fetch;
+  const originalEnv = process.env.OPENROUTER_API_KEY;
+
+  delete process.env.OPENROUTER_API_KEY;
+  globalThis.fetch = async () => {
+    throw new Error('fetch should not run when the API key is missing');
+  };
+
+  try {
+    const result = await handler({
+      args: 'john 3',
+      config: {
+        plugins: {
+          entries: {
+            'bible-plugin': {
+              config: { provider: 'openrouter' }
+            }
+          }
+        }
+      }
+    });
+    assert.match(result.text, /OpenRouter API key/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalEnv === undefined) {
+      delete process.env.OPENROUTER_API_KEY;
+    } else {
+      process.env.OPENROUTER_API_KEY = originalEnv;
+    }
+  }
+});

@@ -2,6 +2,13 @@
 
 This file tracks local changes made to the Bible plugin after the original repo state.
 
+## 2026-10-09
+
+### Clearer error messages for model API failures
+- `/bible` no longer replaces most failures with a single generic retry message.
+- OpenRouter and other model HTTP errors now show status code, provider message when available, and hints for common cases (401 auth, 402 credits, 429 quota/rate limit, timeouts, network).
+- Missing `OPENROUTER_API_KEY` / `openrouterApiKey` still returns the existing setup instructions.
+
 ## 2026-05-21
 
 ### Native /bible command support
