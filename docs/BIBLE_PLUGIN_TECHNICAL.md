@@ -85,9 +85,11 @@ The plugin also strips fenced JSON if the model returns a code block.
 
 User-facing failures should stay short and safe:
 - missing args -> usage response
-- missing profile/key -> config/auth error response
-- upstream model failure -> retry-later style response
-- invalid model JSON -> parse error response
+- missing profile/key -> explicit OpenRouter API key setup message
+- upstream model HTTP failure -> status code, provider message when parseable, and hints for 401/402/429/5xx
+- request timeout / network -> targeted guidance (timeoutMs, baseUrl, connectivity)
+- invalid model JSON -> parse error response with retry/model hint
+- unknown errors -> generic retry message plus truncated technical detail
 
 ## Maintenance guidance
 

@@ -5,6 +5,8 @@ const PLUGIN_ID = 'bible-plugin';
 const PLUGIN_NAME = 'Bible Plugin';
 const MISSING_OPENROUTER_API_KEY_MESSAGE =
   'Bible plugin needs an OpenRouter API key configured via plugin config field openrouterApiKey or OPENROUTER_API_KEY.';
+const GENERIC_REQUEST_FAILURE_MESSAGE =
+  'Bible plugin could not complete that request right now. Please try again in a moment.';
 const DEFAULTS = {
   provider: 'openrouter',
   baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
@@ -385,6 +387,118 @@ function renderEnhancedStudyReply(generated: Record<string, unknown>, reference:
   return sections.join('\n\n');
 }
 
+function truncateForDisplay(text: string, maxChars: number) {
+  const cleaned = text.replace(/\s+/g, ' ').trim();
+  if (cleaned.length <= maxChars) {
+    return cleaned;
+  }
+  return `${cleaned.slice(0, maxChars - 3)}...`;
+}
+
+function extractApiErrorDetail(body: string) {
+  const trimmed = body.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    const err = parsed.error;
+    if (err && typeof err === 'object' && !Array.isArray(err)) {
+      const message = (err as Record<string, unknown>).message;
+      if (typeof message === 'string' && message.trim()) {
+        return message.trim();
+      }
+    }
+    if (typeof parsed.message === 'string' && parsed.message.trim()) {
+      return parsed.message.trim();
+    }
+  } catch {
+    // use raw body fallback below
+  }
+
+  return truncateForDisplay(trimmed, 240);
+}
+
+function hintForHttpStatus(status: number) {
+  if (status === 401) {
+    return 'Check that your OpenRouter API key is valid (openrouterApiKey or OPENROUTER_API_KEY).';
+  }
+  if (status === 402) {
+    return 'OpenRouter reported a billing or credits issue; add credits or check your account limits.';
+  }
+  if (status === 429) {
+    return 'OpenRouter rate limit or quota was exceeded; wait a moment or review usage on openrouter.ai.';
+  }
+  if (status === 503 || status === 529) {
+    return 'The model provider may be overloaded; try again shortly or switch models in plugin config.';
+  }
+  if (status >= 500) {
+    return 'The model API returned a server error; try again in a moment.';
+  }
+  if (status === 400) {
+    return 'The request was rejected by the model API; check plugin model settings.';
+  }
+  return '';
+}
+
+const MODEL_API_ERROR_RE = /^Model API error \((\d{3})\):\s*([\s\S]*)$/;
+
+function formatUserFacingError(error: unknown) {
+  const message =
+    error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+  const name = error instanceof Error ? error.name : '';
+
+  if (!message) {
+    return GENERIC_REQUEST_FAILURE_MESSAGE;
+  }
+
+  if (message === MISSING_OPENROUTER_API_KEY_MESSAGE) {
+    return MISSING_OPENROUTER_API_KEY_MESSAGE;
+  }
+
+  const modelMatch = message.match(MODEL_API_ERROR_RE);
+  if (modelMatch) {
+    const status = Number(modelMatch[1]);
+    const detail = extractApiErrorDetail(modelMatch[2] ?? '');
+    const hint = hintForHttpStatus(status);
+    const parts = [`Bible plugin: model API returned HTTP ${status}.`];
+    if (detail) {
+      parts.push(detail);
+    }
+    if (hint) {
+      parts.push(hint);
+    }
+    return truncateForDisplay(parts.join(' '), 900);
+  }
+
+  if (message === 'Model response did not contain parseable JSON') {
+    return 'Bible plugin: the model returned a reply that was not valid JSON. Try again or switch to a more reliable model in plugin config.';
+  }
+
+  if (
+    name === 'TimeoutError' ||
+    name === 'AbortError' ||
+    /timed?\s*out/i.test(message) ||
+    message.includes('The operation was aborted')
+  ) {
+    return 'Bible plugin: the model request timed out. Try again, use a shorter reference, or increase requestTimeoutMs in plugin config.';
+  }
+
+  if (
+    /fetch failed|ECONNREFUSED|ENOTFOUND|ECONNRESET|network/i.test(message) ||
+    message.includes('Failed to fetch')
+  ) {
+    return 'Bible plugin: could not reach the model API. Check network connectivity and baseUrl in plugin config.';
+  }
+
+  if (message.startsWith('Bible plugin:')) {
+    return truncateForDisplay(message, 900);
+  }
+
+  return truncateForDisplay(`${GENERIC_REQUEST_FAILURE_MESSAGE} Detail: ${message}`, 900);
+}
+
 function resolveOpenRouterApiKey(config: ReturnType<typeof getPluginConfig>) {
   if (config.openrouterApiKey) {
     return config.openrouterApiKey;
@@ -499,12 +613,7 @@ const plugin = definePluginEntry({
           return { text };
         } catch (error: any) {
           console.error('[bible-plugin] request failed:', error?.message ?? error);
-          return {
-            text:
-              error?.message === MISSING_OPENROUTER_API_KEY_MESSAGE
-                ? MISSING_OPENROUTER_API_KEY_MESSAGE
-                : 'Bible plugin could not complete that request right now. Please try again in a moment.'
-          };
+          return { text: formatUserFacingError(error) };
         }
       }
     });
