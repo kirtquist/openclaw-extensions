@@ -26,6 +26,17 @@ Native OpenClaw `/bible` slash command plugin.
 - `signalMaxChars`
 - `defaultMode`
 - `openrouterApiKey` (used only with OpenRouter)
+- `failover` (optional OpenRouter profile when a mode sets `failover: true`)
+- `modes` (optional per-mode overrides for `short`, `study`, `leader`, `enhanced-study`)
+
+Top-level settings are defaults for every mode. Each `modes.<name>` entry can override
+`provider`, `baseUrl`, `model`, `reasoningEffort`, and `requestTimeoutMs`. Set
+`modes.<name>.failover` to `true` to retry on the global `failover` profile when the
+primary Ollama request fails (network, timeout, or HTTP 502/503/504). Use `failover: false`
+to disable. A successful failover appends a short note to the reply.
+
+See GitHub issue [#11](https://github.com/kirtquist/openclaw-extensions/issues/11) and the
+`PER_MODE_AND_FAILOVER_PLAN.md` doc (after docs PR merge) for a full example layout.
 
 OpenRouter remains the default:
 

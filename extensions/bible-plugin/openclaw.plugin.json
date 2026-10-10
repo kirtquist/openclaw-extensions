@@ -60,6 +60,90 @@
       "openrouterApiKey": {
         "type": "string",
         "description": "Direct OpenRouter API key; falls back to OPENROUTER_API_KEY and is ignored for Ollama."
+      },
+      "failover": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "OpenRouter profile used when a mode opts in with modes.<mode>.failover.",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": ["openrouter", "ollama"]
+          },
+          "baseUrl": { "type": "string" },
+          "model": { "type": "string" },
+          "reasoningEffort": {
+            "type": "string",
+            "enum": ["none", "low", "medium", "high", "max"]
+          },
+          "requestTimeoutMs": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 900000
+          }
+        }
+      },
+      "modes": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Per-mode overrides of provider, endpoint, and model; optional failover flag or profile.",
+        "properties": {
+          "short": { "$ref": "#/$defs/modeOverride" },
+          "study": { "$ref": "#/$defs/modeOverride" },
+          "leader": { "$ref": "#/$defs/modeOverride" },
+          "enhanced-study": { "$ref": "#/$defs/modeOverride" }
+        }
+      }
+    },
+    "$defs": {
+      "modeOverride": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": ["openrouter", "ollama"]
+          },
+          "baseUrl": { "type": "string" },
+          "model": { "type": "string" },
+          "reasoningEffort": {
+            "type": "string",
+            "enum": ["none", "low", "medium", "high", "max"]
+          },
+          "requestTimeoutMs": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 900000
+          },
+          "openrouterApiKey": { "type": "string" },
+          "failover": {
+            "description": "true uses top-level failover; false disables; object merges with top-level failover.",
+            "oneOf": [
+              { "type": "boolean" },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": ["openrouter", "ollama"]
+                  },
+                  "baseUrl": { "type": "string" },
+                  "model": { "type": "string" },
+                  "reasoningEffort": {
+                    "type": "string",
+                    "enum": ["none", "low", "medium", "high", "max"]
+                  },
+                  "requestTimeoutMs": {
+                    "type": "integer",
+                    "minimum": 1000,
+                    "maximum": 900000
+                  }
+                }
+              }
+            ]
+          }
+        }
       }
     }
   }
